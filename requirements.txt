@@ -14,6 +14,7 @@ onnxruntime>=1.17.0
 huggingface_hub
 transformers>=4.36.0
 timm>=0.9.0
+rembg>=2.0.50
 
 # FastAPI & API dependencies
 fastapi>=0.110.0

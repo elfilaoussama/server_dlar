@@ -55,6 +55,7 @@ class ProcessingResult(BaseModel):
     elements_detected: int
     elements: List[DocumentElement] = []
     output_files: Dict[str, str] = Field(default_factory=dict)
+    download_urls: Dict[str, str] = Field(default_factory=dict, description="Downloadable URLs for output files")
     errors: List[str] = []
 
 
@@ -64,7 +65,9 @@ class BatchProcessingResult(BaseModel):
     successful: int
     failed: int
     processing_time_ms: float
-    results: List[ProcessingResult]
+    results: List[ProcessingResult] = []
+    merged_document: Optional[str] = Field(None, description="Path to merged document (for PDF)")
+    download_urls: Dict[str, str] = Field(default_factory=dict, description="Downloadable URLs for merged files")
 
 
 # Operational Schemas
