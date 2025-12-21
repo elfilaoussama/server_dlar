@@ -111,7 +111,10 @@ RUN pip install --no-cache-dir gdown && \
 COPY --chown=appuser:appuser . /app/
 
 # Ensure directories exist with correct permissions (after COPY)
-RUN mkdir -p /app/logs /app/output && chown -R appuser:appuser /app/logs /app/output
+# Use 777 to ensure all workers can write
+RUN mkdir -p /app/logs /app/output && \
+    chown -R appuser:appuser /app/logs /app/output && \
+    chmod -R 777 /app/output /app/logs
 
 # Switch to non-root user
 USER appuser
