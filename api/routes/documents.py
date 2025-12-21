@@ -21,8 +21,9 @@ logger = get_logger("dla.documents")
 ALLOWED_IMAGES = {".jpg", ".jpeg", ".png", ".tiff", ".bmp"}
 ALLOWED_PDF = {".pdf"}
 
-# Store output files temporarily for download (in production, use blob storage)
-_output_store = {}
+# Persistent output directory for downloads (shared across workers)
+OUTPUT_DIR = config.OUTPUT_DIR
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def validate_ext(filename: str, allowed: set) -> bool:
@@ -35,6 +36,14 @@ async def save_file(upload: UploadFile, dest: str) -> str:
     return dest
 
 
+def copy_to_output_dir(file_path: str, request_id: str, format_type: str) -> str:
+    """Copy file to persistent output directory for download."""
+    filename = f"{request_id}_{format_type}.{format_type}"
+    dest_path = os.path.join(OUTPUT_DIR, filename)
+    shutil.copy(file_path, dest_path)
+    return dest_path
+
+
 def generate_download_urls(request: Request, request_id: str, output_files: dict) -> dict:
     """Generate download URLs for output files."""
     base_url = str(request.base_url).rstrip("/")
@@ -42,10 +51,9 @@ def generate_download_urls(request: Request, request_id: str, output_files: dict
     
     for format_type, file_path in output_files.items():
         if os.path.exists(file_path):
-            # Store file path for later download
-            file_key = f"{request_id}_{format_type}"
-            _output_store[file_key] = file_path
-            download_urls[format_type] = f"{base_url}/v1/download/{file_key}"
+            # Copy to persistent output directory
+            copy_to_output_dir(file_path, request_id, format_type)
+            download_urls[format_type] = f"{base_url}/v1/download/{request_id}_{format_type}"
     
     return download_urls
 
@@ -53,21 +61,22 @@ def generate_download_urls(request: Request, request_id: str, output_files: dict
 @router.get("/download/{file_key}", summary="Download Generated File")
 async def download_file(file_key: str):
     """Download a generated output file."""
-    if file_key not in _output_store:
-        raise HTTPException(404, "File not found or expired")
+    # Parse file key to get format
+    parts = file_key.rsplit("_", 1)
+    if len(parts) != 2:
+        raise HTTPException(404, "Invalid file key")
     
-    file_path = _output_store[file_key]
+    format_type = parts[1]
+    filename = f"{file_key}.{format_type}"
+    file_path = os.path.join(OUTPUT_DIR, filename)
+    
     if not os.path.exists(file_path):
-        del _output_store[file_key]
-        raise HTTPException(404, "File not found")
-    
-    # Determine filename based on format
-    format_type = file_key.split("_")[-1]
-    filename = f"document.{format_type}"
+        logger.warning(f"File not found: {file_path}")
+        raise HTTPException(404, "File not found or expired")
     
     return FileResponse(
         path=file_path,
-        filename=filename,
+        filename=f"document.{format_type}",
         media_type="application/octet-stream"
     )
 
@@ -219,18 +228,21 @@ async def process_pdf(
                 if result.status == ProcessingStatus.COMPLETED and "docx" in result.output_files:
                     docx_paths.append(result.output_files["docx"])
             
-            if docx_paths:
+        if docx_paths:
                 # Merge all pages into one DOCX
                 merged_doc_path = os.path.join(temp_dir, "merged_document.docx")
                 try:
                     merge_docx_files(docx_paths, merged_doc_path)
                     logger.info(f"Merged {len(docx_paths)} pages into {merged_doc_path}")
                     
-                    # Generate download URL for merged document
-                    merged_key = f"{request_id}_merged_docx"
-                    _output_store[merged_key] = merged_doc_path
+                    # Copy to persistent output directory for download
+                    merged_key = f"{request_id}_merged"
+                    merged_filename = f"{merged_key}_docx.docx"
+                    merged_dest = os.path.join(OUTPUT_DIR, merged_filename)
+                    shutil.copy(merged_doc_path, merged_dest)
+                    
                     base_url = str(request.base_url).rstrip("/")
-                    merged_download_urls["docx"] = f"{base_url}/v1/download/{merged_key}"
+                    merged_download_urls["docx"] = f"{base_url}/v1/download/{merged_key}_docx"
                 except Exception as e:
                     logger.error(f"Failed to merge DOCX files: {e}")
         
