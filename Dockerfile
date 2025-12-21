@@ -110,6 +110,9 @@ RUN pip install --no-cache-dir gdown && \
 # Copy application code
 COPY --chown=appuser:appuser . /app/
 
+# Ensure directories exist with correct permissions (after COPY)
+RUN mkdir -p /app/logs /app/output && chown -R appuser:appuser /app/logs /app/output
+
 # Switch to non-root user
 USER appuser
 

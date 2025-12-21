@@ -158,6 +158,7 @@ def setup_logging(name: str = "dla") -> logging.Logger:
     
     Log files are stored as: logs/app_YYYY-MM-DD.log
     Size-based rotation creates: logs/app_YYYY-MM-DD.1.log, etc.
+    Falls back to console-only if file logging fails.
     """
     logger = logging.getLogger(name)
     
@@ -173,24 +174,30 @@ def setup_logging(name: str = "dla") -> logging.Logger:
     else:
         formatter = TextFormatter()
     
-    # Console handler
+    # Console handler (always enabled)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # Daily rotating file handler
+    # Daily rotating file handler (optional, with error handling)
     if config.LOG_FILE_ENABLED:
-        log_dir = Path(config.LOG_FILE_PATH).parent
-        file_handler = DailyRotatingFileHandler(
-            log_dir=str(log_dir),
-            base_name="app",
-            max_bytes=config.LOG_MAX_BYTES,
-            backup_count=config.LOG_BACKUP_COUNT
-        )
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+        try:
+            log_dir = Path(config.LOG_FILE_PATH).parent
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_handler = DailyRotatingFileHandler(
+                log_dir=str(log_dir),
+                base_name="app",
+                max_bytes=config.LOG_MAX_BYTES,
+                backup_count=config.LOG_BACKUP_COUNT
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except (PermissionError, OSError) as e:
+            # Fall back to console-only logging if file logging fails
+            logger.warning(f"File logging disabled: {e}. Using console only.")
     
     logger.propagate = False
     return logger
