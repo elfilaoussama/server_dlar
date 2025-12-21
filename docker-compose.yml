@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  dla-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Replace with your actual Google Drive file IDs
+        YOLO_MODEL_URL: "https://drive.google.com/uc?export=download&id=YOUR_YOLO_MODEL_FILE_ID"
+    image: dla-api:latest
+    container_name: dla-api
+    
+    ports:
+      - "8000:8000"
+    
+    environment:
+      - APP_NAME=Document Layout Analysis API
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    
+    volumes:
+      # Persist logs
+      - ./logs:/app/logs
+      # Persist output
+      - ./output:/app/output
+      # Optional: Mount models from host (skip download)
+      # - ./models:/app/models
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

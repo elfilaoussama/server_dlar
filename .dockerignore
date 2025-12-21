@@ -1,0 +1,60 @@
+# Build and runtime files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs (will be created at runtime)
+logs/*.log
+
+# Output (will be created at runtime)
+output/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+*.test.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Development files
+*.ipynb
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
+temp/
+tmp/
