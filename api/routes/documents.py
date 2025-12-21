@@ -38,10 +38,16 @@ async def save_file(upload: UploadFile, dest: str) -> str:
 
 def copy_to_output_dir(file_path: str, request_id: str, format_type: str) -> str:
     """Copy file to persistent output directory for download."""
-    filename = f"{request_id}_{format_type}.{format_type}"
-    dest_path = os.path.join(OUTPUT_DIR, filename)
-    shutil.copy(file_path, dest_path)
-    return dest_path
+    try:
+        filename = f"{request_id}_{format_type}.{format_type}"
+        dest_path = os.path.join(OUTPUT_DIR, filename)
+        logger.info(f"Copying {file_path} to {dest_path}")
+        shutil.copy(file_path, dest_path)
+        logger.info(f"File copied successfully: {dest_path}")
+        return dest_path
+    except Exception as e:
+        logger.error(f"Failed to copy file: {e}")
+        return None
 
 
 def generate_download_urls(request: Request, request_id: str, output_files: dict) -> dict:
@@ -49,11 +55,18 @@ def generate_download_urls(request: Request, request_id: str, output_files: dict
     base_url = str(request.base_url).rstrip("/")
     download_urls = {}
     
+    logger.info(f"Generating download URLs for {output_files}")
+    
     for format_type, file_path in output_files.items():
+        logger.debug(f"Checking file: {file_path}, exists: {os.path.exists(file_path)}")
         if os.path.exists(file_path):
             # Copy to persistent output directory
-            copy_to_output_dir(file_path, request_id, format_type)
-            download_urls[format_type] = f"{base_url}/v1/download/{request_id}_{format_type}"
+            dest = copy_to_output_dir(file_path, request_id, format_type)
+            if dest:
+                download_urls[format_type] = f"{base_url}/v1/download/{request_id}_{format_type}"
+                logger.info(f"Download URL: {download_urls[format_type]}")
+        else:
+            logger.warning(f"File does not exist: {file_path}")
     
     return download_urls
 
@@ -228,7 +241,9 @@ async def process_pdf(
                 if result.status == ProcessingStatus.COMPLETED and "docx" in result.output_files:
                     docx_paths.append(result.output_files["docx"])
             
-        if docx_paths:
+            logger.info(f"Found {len(docx_paths)} DOCX files to merge")
+            
+            if docx_paths:
                 # Merge all pages into one DOCX
                 merged_doc_path = os.path.join(temp_dir, "merged_document.docx")
                 try:
@@ -239,12 +254,15 @@ async def process_pdf(
                     merged_key = f"{request_id}_merged"
                     merged_filename = f"{merged_key}_docx.docx"
                     merged_dest = os.path.join(OUTPUT_DIR, merged_filename)
+                    
+                    logger.info(f"Copying merged doc to {merged_dest}")
                     shutil.copy(merged_doc_path, merged_dest)
                     
                     base_url = str(request.base_url).rstrip("/")
                     merged_download_urls["docx"] = f"{base_url}/v1/download/{merged_key}_docx"
+                    logger.info(f"Merged download URL: {merged_download_urls['docx']}")
                 except Exception as e:
-                    logger.error(f"Failed to merge DOCX files: {e}")
+                    logger.exception(f"Failed to merge DOCX files: {e}")
         
         logger.info(f"PDF complete: {len(results)} pages, {successful} successful", extra={"extra_data": {"request_id": request_id, "time_ms": processing_time}})
         
