@@ -73,7 +73,27 @@ models/*.onnx
 models/*.pt
 models/*.pth
 models/*.bin
+models/*.h5
+models/*.keras
+models/*.safetensors
 !models/.gitkeep
+
+# =============================================================================
+# Tesseract Data (large files - download in Docker)
+# =============================================================================
+tessdata/*.traineddata
+!tessdata/.gitkeep
+
+# =============================================================================
+# Large Files (generic)
+# =============================================================================
+*.onnx
+*.pt
+*.pth
+*.bin
+*.h5
+*.traineddata
+*.weights
 
 # =============================================================================
 # Data
