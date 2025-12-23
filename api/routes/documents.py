@@ -36,11 +36,37 @@ async def save_file(upload: UploadFile, dest: str) -> str:
     return dest
 
 
+def create_request_dirs(request_id: str) -> tuple:
+    """Create unique directories for a request with input/ and output/ subdirs."""
+    request_dir = os.path.join(OUTPUT_DIR, request_id)
+    input_dir = os.path.join(request_dir, "input")
+    output_dir = os.path.join(request_dir, "output")
+    os.makedirs(input_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    logger.info(f"Created request directories: {request_dir}")
+    return request_dir, input_dir, output_dir
+
+
+def save_input_file(file_path: str, request_id: str) -> str:
+    """Copy input file to persistent input directory."""
+    try:
+        request_dir, input_dir, _ = create_request_dirs(request_id)
+        filename = os.path.basename(file_path)
+        dest_path = os.path.join(input_dir, filename)
+        logger.info(f"Saving input file: {file_path} to {dest_path}")
+        shutil.copy(file_path, dest_path)
+        return dest_path
+    except Exception as e:
+        logger.error(f"Failed to save input file: {e}")
+        return None
+
+
 def copy_to_output_dir(file_path: str, request_id: str, format_type: str) -> str:
     """Copy file to persistent output directory for download."""
     try:
-        filename = f"{request_id}_{format_type}.{format_type}"
-        dest_path = os.path.join(OUTPUT_DIR, filename)
+        _, _, output_dir = create_request_dirs(request_id)
+        filename = f"document.{format_type}"
+        dest_path = os.path.join(output_dir, filename)
         logger.info(f"Copying {file_path} to {dest_path}")
         shutil.copy(file_path, dest_path)
         logger.info(f"File copied successfully: {dest_path}")
@@ -66,7 +92,7 @@ def generate_download_urls(request: Request, request_id: str, output_files: dict
             # Copy to persistent output directory
             dest = copy_to_output_dir(file_path, request_id, format_type)
             if dest:
-                download_urls[format_type] = f"{base_url}/v1/download/{request_id}_{format_type}"
+                download_urls[format_type] = f"{base_url}/v1/download/{request_id}/{format_type}"
                 logger.info(f"Download URL: {download_urls[format_type]}")
         else:
             logger.warning(f"File does not exist: {file_path}")
@@ -74,17 +100,11 @@ def generate_download_urls(request: Request, request_id: str, output_files: dict
     return download_urls
 
 
-@router.get("/download/{file_key}", summary="Download Generated File")
-async def download_file(file_key: str):
+@router.get("/download/{request_id}/{format_type}", summary="Download Generated File")
+async def download_file(request_id: str, format_type: str):
     """Download a generated output file."""
-    # Parse file key to get format
-    parts = file_key.rsplit("_", 1)
-    if len(parts) != 2:
-        raise HTTPException(404, "Invalid file key")
-    
-    format_type = parts[1]
-    filename = f"{file_key}.{format_type}"
-    file_path = os.path.join(OUTPUT_DIR, filename)
+    # Build path to the output file
+    file_path = os.path.join(OUTPUT_DIR, request_id, "output", f"document.{format_type}")
     
     if not os.path.exists(file_path):
         logger.warning(f"File not found: {file_path}")
@@ -125,6 +145,9 @@ async def process_single_image(
     try:
         input_path = os.path.join(temp_dir, file.filename)
         await save_file(file, input_path)
+        
+        # Save input file to persistent storage
+        save_input_file(input_path, request_id)
         
         processor = await get_processor()
         result = await processor.process_image(input_path, temp_dir, options, request_id)
@@ -177,6 +200,10 @@ async def process_multiple_images(
             await save_file(f, path)
             paths.append(path)
         
+        # Save all input files
+        for i, path in enumerate(paths):
+            save_input_file(path, f"{request_id}_{i}")
+        
         processor = await get_processor()
         results = await processor.process_images_batch(paths, temp_dir, options, request_id)
         
@@ -226,6 +253,9 @@ async def process_pdf(
         pdf_path = os.path.join(temp_dir, file.filename)
         await save_file(file, pdf_path)
         
+        # Save input PDF file
+        save_input_file(pdf_path, request_id)
+        
         processor = await get_processor()
         results = await processor.process_pdf(pdf_path, temp_dir, options, request_id)
         
@@ -253,10 +283,9 @@ async def process_pdf(
                     merge_docx_files(docx_paths, merged_doc_path)
                     logger.info(f"Merged {len(docx_paths)} pages into {merged_doc_path}")
                     
-                    # Copy to persistent output directory for download
-                    merged_key = f"{request_id}_merged"
-                    merged_filename = f"{merged_key}_docx.docx"
-                    merged_dest = os.path.join(OUTPUT_DIR, merged_filename)
+                    # Copy to persistent output directory using new structure
+                    _, _, output_dir = create_request_dirs(request_id)
+                    merged_dest = os.path.join(output_dir, "document.docx")
                     
                     logger.info(f"Copying merged doc to {merged_dest}")
                     shutil.copy(merged_doc_path, merged_dest)
@@ -265,7 +294,7 @@ async def process_pdf(
                     # Force HTTPS for production deployments
                     if base_url.startswith("http://") and not ("localhost" in base_url or "127.0.0.1" in base_url):
                         base_url = base_url.replace("http://", "https://", 1)
-                    merged_download_urls["docx"] = f"{base_url}/v1/download/{merged_key}_docx"
+                    merged_download_urls["docx"] = f"{base_url}/v1/download/{request_id}/docx"
                     logger.info(f"Merged download URL: {merged_download_urls['docx']}")
                 except Exception as e:
                     logger.exception(f"Failed to merge DOCX files: {e}")
