@@ -53,6 +53,9 @@ def copy_to_output_dir(file_path: str, request_id: str, format_type: str) -> str
 def generate_download_urls(request: Request, request_id: str, output_files: dict) -> dict:
     """Generate download URLs for output files."""
     base_url = str(request.base_url).rstrip("/")
+    # Force HTTPS for production deployments
+    if base_url.startswith("http://") and not ("localhost" in base_url or "127.0.0.1" in base_url):
+        base_url = base_url.replace("http://", "https://", 1)
     download_urls = {}
     
     logger.info(f"Generating download URLs for {output_files}")
@@ -259,6 +262,9 @@ async def process_pdf(
                     shutil.copy(merged_doc_path, merged_dest)
                     
                     base_url = str(request.base_url).rstrip("/")
+                    # Force HTTPS for production deployments
+                    if base_url.startswith("http://") and not ("localhost" in base_url or "127.0.0.1" in base_url):
+                        base_url = base_url.replace("http://", "https://", 1)
                     merged_download_urls["docx"] = f"{base_url}/v1/download/{merged_key}_docx"
                     logger.info(f"Merged download URL: {merged_download_urls['docx']}")
                 except Exception as e:
